@@ -9,30 +9,57 @@ function getCurrentDateTime() {
     return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 }
 
+// Base64化された日本語フォント（Noto Sans JP Regular）を動的に読み込む処理
+async function addJapaneseFont(doc) {
+    // CDNから NotoSansJP-Regular のフォントファイルを取得
+    const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-japanese-400-normal.woff";
+    
+    try {
+        const response = await fetch(fontUrl);
+        const fontBlob = await response.blob();
+        
+        const reader = new FileReader();
+        const base64Font = await new Promise((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(fontBlob);
+        });
+
+        // jsPDFに仮想ファイルとしてフォントを追加
+        doc.addFileToVFS("NotoSansJP-Regular.woff", base64Font);
+        doc.addFont("NotoSansJP-Regular.woff", "NotoSansJP", "normal");
+    } catch (e) {
+        console.error("フォントの読み込みに失敗しました:", e);
+    }
+}
+
 document.getElementById('generateBtn').addEventListener('click', async () => {
     const { jsPDF } = window.jspdf;
     const { PDFDocument } = PDFLib;
 
     const title = document.getElementById('titleInput').value.trim() || '無題';
-    const dateMode = document.querySelector('input[name="dateMode"]:checked').value; // 'yes' または 'no'
+    const dateMode = document.querySelector('input[name="dateMode"]:checked').value;
     const showDate = (dateMode === 'yes');
     const memoText = document.getElementById('memoInput').value;
-    const orderMode = document.querySelector('input[name="orderMode"]:checked').value; // 'normal' または 'reverse'
+    const orderMode = document.querySelector('input[name="orderMode"]:checked').value;
     const pdfFileInput = document.getElementById('pdfFileInput');
 
     // --- ステップ 1: jsPDF で表紙の PDF バイナリを作成 ---
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    
+    // 日本語フォントを適用
+    await addJapaneseFont(doc);
+    doc.setFont("NotoSansJP");
+
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // タイトル
-    doc.setFont("Helvetica", "bold");
+    // タイトル（フォントサイズ大きめ）
     doc.setFontSize(18);
     doc.text(title, pageWidth / 2, pageHeight * 0.73, { align: 'center' });
 
     // 日付（「記入する」の場合のみ）
     if (showDate) {
-        doc.setFont("Helvetica", "normal");
         doc.setFontSize(11);
         doc.text(`作成日時: ${getCurrentDateTime()}`, pageWidth / 2, pageHeight * 0.65, { align: 'center' });
     }
@@ -67,7 +94,6 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             }
             drawText = drawText.replace(/\*\*(.*?)\*\*/g, '$1');
 
-            doc.setFont("Helvetica", "normal");
             doc.setFontSize(fontSize);
             doc.text(drawText, xOffset, currentY);
             currentY -= lineSpacing;
@@ -149,4 +175,3 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         alert("⚠️ PDFの処理中にエラーが発生しました。コンソールを確認してください。");
     }
 });
-
