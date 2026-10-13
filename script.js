@@ -53,37 +53,40 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // ── 表紙のデザイン配置 ──
-    // 1. タイトル（中央より少し上、大きめ＆太字風に表現）
+    // ── 表紙のデザイン配置（上部に移動 ＆ メモを左揃え） ──
+    let currentY = 50; // 上部からの余白を小さくして全体を上に配置
+
+    // 1. タイトル（中央揃え）
     doc.setFontSize(26);
-    // 長いタイトルの場合を考慮して折り返し処理
     const titleLines = doc.splitTextToSize(title, pageWidth - 60);
-    doc.text(titleLines, pageWidth / 2, pageHeight * 0.4, { align: 'center' });
+    doc.text(titleLines, pageWidth / 2, currentY, { align: 'center' });
+    
+    currentY += (titleLines.length * 12) + 6;
 
-    let currentY = pageHeight * 0.4 + (titleLines.length * 12) + 10;
-
-    // 2. 日付（「記入する」の場合のみ）
+    // 2. 日付（「記入する」の場合のみ・中央揃え）
     if (showDate) {
         doc.setFontSize(11);
-        doc.setTextColor(100, 100, 100); // 少し薄いグレー
+        doc.setTextColor(100, 100, 100);
         doc.text(`作成日時: ${getCurrentDateTime()}`, pageWidth / 2, currentY, { align: 'center' });
-        currentY += 20;
+        currentY += 15;
     }
 
-    // 3. メモ（中央揃え、または左寄せのブロックとして配置）
+    // 3. メモ（左揃え、余白を広めにとって大量に書けるように配置）
     if (memoText.trim() !== "") {
+        currentY += 10; // タイトル・日付の下から少し離す
+        const leftMargin = 30; // 左側の余白
+        const maxLineWidth = pageWidth - (leftMargin * 2);
+        
         doc.setFontSize(11);
         doc.setTextColor(60, 60, 60);
         
-        const lines = memoText.split('\n');
-        // メモブロックを中央付近にまとめるため、開始位置を調整
-        let memoY = Math.max(currentY, pageHeight * 0.6);
+        const rawLines = memoText.split('\n');
         const lineSpacing = 7;
 
-        lines.forEach(line => {
+        rawLines.forEach(line => {
             const trimmed = line.trim();
             if (!trimmed) {
-                memoY -= 3;
+                currentY += 4; // 空行
                 return;
             }
             let drawText = trimmed;
@@ -101,9 +104,13 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             drawText = drawText.replace(/\*\*(.*?)\*\*/g, '$1');
 
             doc.setFontSize(fontSize);
-            // 見栄えよく中央揃えで配置
-            doc.text(drawText, pageWidth / 2, memoY, { align: 'center' });
-            memoY += lineSpacing;
+            
+            // 長い文章が折り返せるように幅を制限しつつ左揃えで出力
+            const wrappedLines = doc.splitTextToSize(drawText, maxLineWidth);
+            wrappedLines.forEach(wLine => {
+                doc.text(wLine, leftMargin, currentY, { align: 'left' });
+                currentY += lineSpacing;
+            });
         });
     }
 
