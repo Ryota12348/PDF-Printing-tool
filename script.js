@@ -5,17 +5,16 @@ function getCurrentDateTime() {
     const dd = String(now.getDate()).padStart(2, '0');
     const hh = String(now.getHours()).padStart(2, '0');
     const min = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
 
-// Base64化された日本語フォント（Noto Sans JP Regular）を動的に読み込む処理
+// ローカルに配置した TTF ファイルを読み込む関数
 async function addJapaneseFont(doc) {
-    // CDNから NotoSansJP-Regular のフォントファイルを取得
-    const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-jp@5.0.19/files/noto-sans-jp-japanese-400-normal.woff";
-    
     try {
-        const response = await fetch(fontUrl);
+        const response = await fetch('NotoSansJP-Light.ttf');
+        if (!response.ok) {
+            throw new Error('NotoSansJP-Light.ttf が見つかりません。同じフォルダに配置してください。');
+        }
         const fontBlob = await response.blob();
         
         const reader = new FileReader();
@@ -25,11 +24,11 @@ async function addJapaneseFont(doc) {
             reader.readAsDataURL(fontBlob);
         });
 
-        // jsPDFに仮想ファイルとしてフォントを追加
-        doc.addFileToVFS("NotoSansJP-Regular.woff", base64Font);
-        doc.addFont("NotoSansJP-Regular.woff", "NotoSansJP", "normal");
+        doc.addFileToVFS("NotoSansJP-Light.ttf", base64Font);
+        doc.addFont("NotoSansJP-Light.ttf", "NotoSansJP", "normal");
     } catch (e) {
-        console.error("フォントの読み込みに失敗しました:", e);
+        console.error(e);
+        alert("⚠️ フォントファイル 'NotoSansJP-Light.ttf' の読み込みに失敗しました。HTMLと同じフォルダに配置されているか確認してください。");
     }
 }
 
@@ -47,56 +46,64 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     // --- ステップ 1: jsPDF で表紙の PDF バイナリを作成 ---
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     
-    // 日本語フォントを適用
+    // ローカルの日本語フォントを適用
     await addJapaneseFont(doc);
     doc.setFont("NotoSansJP");
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // タイトル（フォントサイズ大きめ）
-    doc.setFontSize(18);
-    doc.text(title, pageWidth / 2, pageHeight * 0.73, { align: 'center' });
+    // ── 表紙のデザイン配置 ──
+    // 1. タイトル（中央より少し上、大きめ＆太字風に表現）
+    doc.setFontSize(26);
+    // 長いタイトルの場合を考慮して折り返し処理
+    const titleLines = doc.splitTextToSize(title, pageWidth - 60);
+    doc.text(titleLines, pageWidth / 2, pageHeight * 0.4, { align: 'center' });
 
-    // 日付（「記入する」の場合のみ）
+    let currentY = pageHeight * 0.4 + (titleLines.length * 12) + 10;
+
+    // 2. 日付（「記入する」の場合のみ）
     if (showDate) {
         doc.setFontSize(11);
-        doc.text(`作成日時: ${getCurrentDateTime()}`, pageWidth / 2, pageHeight * 0.65, { align: 'center' });
+        doc.setTextColor(100, 100, 100); // 少し薄いグレー
+        doc.text(`作成日時: ${getCurrentDateTime()}`, pageWidth / 2, currentY, { align: 'center' });
+        currentY += 20;
     }
 
-    // メモ（Markdown風）
+    // 3. メモ（中央揃え、または左寄せのブロックとして配置）
     if (memoText.trim() !== "") {
-        const leftMargin = 25;
-        let currentY = pageHeight * 0.56;
-        const lineSpacing = 7;
+        doc.setFontSize(11);
+        doc.setTextColor(60, 60, 60);
+        
         const lines = memoText.split('\n');
+        // メモブロックを中央付近にまとめるため、開始位置を調整
+        let memoY = Math.max(currentY, pageHeight * 0.6);
+        const lineSpacing = 7;
 
         lines.forEach(line => {
             const trimmed = line.trim();
             if (!trimmed) {
-                currentY -= 3;
+                memoY -= 3;
                 return;
             }
-            let fontSize = 12;
             let drawText = trimmed;
-            let xOffset = leftMargin;
+            let fontSize = 11;
 
             if (trimmed.startsWith('#')) {
                 const match = trimmed.match(/^(#{1,6})\s+(.*)$/);
                 if (match) {
-                    const level = match[1].length;
                     drawText = match[2];
-                    fontSize = level === 1 ? 15 : (level === 2 ? 13 : 12);
+                    fontSize = match[1].length === 1 ? 14 : 12;
                 }
             } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                 drawText = '• ' + trimmed.substring(2).trim();
-                xOffset = leftMargin + 5;
             }
             drawText = drawText.replace(/\*\*(.*?)\*\*/g, '$1');
 
             doc.setFontSize(fontSize);
-            doc.text(drawText, xOffset, currentY);
-            currentY -= lineSpacing;
+            // 見栄えよく中央揃えで配置
+            doc.text(drawText, pageWidth / 2, memoY, { align: 'center' });
+            memoY += lineSpacing;
         });
     }
 
