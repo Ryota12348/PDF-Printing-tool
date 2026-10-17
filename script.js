@@ -1,3 +1,4 @@
+// 現在の日時を YYYY-MM-DD HH:mm:ss 形式で取得
 function getCurrentDateTime() {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -5,34 +6,44 @@ function getCurrentDateTime() {
     const dd = String(now.getDate()).padStart(2, '0');
     const hh = String(now.getHours()).padStart(2, '0');
     const min = String(now.getMinutes()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
 }
 
-// ローカルに配置した TTF ファイルを読み込む関数
-async function addJapaneseFont(doc) {
-    try {
-        const response = await fetch('NotoSansJP-Light.ttf');
-        if (!response.ok) {
-            throw new Error('NotoSansJP-Light.ttf が見つかりません。同じフォルダに配置してください。');
-        }
-        const fontBlob = await response.blob();
-        
-        const reader = new FileReader();
-        const base64Font = await new Promise((resolve, reject) => {
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(fontBlob);
-        });
+// fonts/ フォルダから3種類のフォントを読み込んで登録する関数
+async function loadFonts(doc) {
+    const fontList = [
+        { name: 'NotoSansJP-Medium', filename: 'fonts/NotoSansJP-Medium.ttf', style: 'normal' },
+        { name: 'NotoSansJP-Bold', filename: 'fonts/NotoSansJP-Bold.ttf', style: 'bold' },
+        { name: 'NotoSansJP-Light', filename: 'fonts/NotoSansJP-Light.ttf', style: 'light' }
+    ];
 
-        doc.addFileToVFS("NotoSansJP-Light.ttf", base64Font);
-        doc.addFont("NotoSansJP-Light.ttf", "NotoSansJP", "normal");
-    } catch (e) {
-        console.error(e);
-        alert("⚠️ フォントファイル 'NotoSansJP-Light.ttf' の読み込みに失敗しました。HTMLと同じフォルダに配置されているか確認してください。");
+    for (const font of fontList) {
+        try {
+            const response = await fetch(font.filename);
+            if (!response.ok) {
+                throw new Error(`${font.filename} が見つかりません。fonts/ フォルダを確認してください。`);
+            }
+            const fontBlob = await response.blob();
+            
+            const reader = new FileReader();
+            const base64Font = await new Promise((resolve, reject) => {
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(fontBlob);
+            });
+
+            doc.addFileToVFS(`${font.name}.ttf`, base64Font);
+            doc.addFont(`${font.name}.ttf`, font.name, font.style);
+        } catch (e) {
+            console.error(e);
+            alert(`⚠️ フォントの読み込みエラー: ${font.filename}`);
+        }
     }
 }
 
-document.getElementById('generateBtn').addEventListener('click', async () => {
+// 共通のPDF生成ロジック
+async function buildProcessedPdf() {
     const { jsPDF } = window.jspdf;
     const { PDFDocument } = PDFLib;
 
@@ -45,130 +56,222 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     // --- ステップ 1: jsPDF で表紙の PDF バイナリを作成 ---
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    
-    // ローカルの日本語フォントを適用
-    await addJapaneseFont(doc);
-    doc.setFont("NotoSansJP");
+    await loadFonts(doc);
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // ── 表紙のデザイン配置（上部に移動 ＆ メモを左揃え） ──
-    let currentY = 50; // 上部からの余白を小さくして全体を上に配置
+    let currentY = 40;
 
-    // 1. タイトル（中央揃え）
-    doc.setFontSize(26);
-    const titleLines = doc.splitTextToSize(title, pageWidth - 60);
+    // 1. タイトル
+    doc.setFont("NotoSansJP-Bold", "bold");
+    doc.setFontSize(24);
+    doc.setTextColor(30, 30, 30);
+    const titleLines = doc.splitTextToSize(title, pageWidth - 50);
     doc.text(titleLines, pageWidth / 2, currentY, { align: 'center' });
-    
-    currentY += (titleLines.length * 12) + 6;
+    currentY += (titleLines.length * 9) + 4;
 
-    // 2. 日付（「記入する」の場合のみ・中央揃え）
+    // 2. 日付
     if (showDate) {
-        doc.setFontSize(11);
-        doc.setTextColor(100, 100, 100);
+        doc.setFont("NotoSansJP-Light", "light");
+        doc.setFontSize(10);
+        doc.setTextColor(110, 110, 110);
         doc.text(`作成日時: ${getCurrentDateTime()}`, pageWidth / 2, currentY, { align: 'center' });
-        currentY += 15;
+        currentY += 12;
+    } else {
+        currentY += 4;
     }
 
-    // 3. メモ（左揃え、余白を広めにとって大量に書けるように配置）
+    // 3. メモ（Markdown解析）
     if (memoText.trim() !== "") {
-        currentY += 10; // タイトル・日付の下から少し離す
-        const leftMargin = 30; // 左側の余白
+        const leftMargin = 25;
         const maxLineWidth = pageWidth - (leftMargin * 2);
         
-        doc.setFontSize(11);
-        doc.setTextColor(60, 60, 60);
-        
-        const rawLines = memoText.split('\n');
-        const lineSpacing = 7;
+        doc.setFont("NotoSansJP-Medium", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(50, 50, 50);
 
-        rawLines.forEach(line => {
+        const rawLines = memoText.split('\n');
+        const defaultLineSpacing = 5.2;
+
+        let inTable = false;
+        let tableRows = [];
+
+        const renderTable = (rows) => {
+            if (rows.length === 0) return;
+            const validRows = rows.filter(r => !r.some(cell => /^:?-+:?$/.test(cell.trim())));
+            if (validRows.length === 0) return;
+
+            const colCount = Math.max(...validRows.map(r => r.length));
+            const colWidth = maxLineWidth / colCount;
+
+            doc.setFontSize(9.5);
+            validRows.forEach((row, rowIndex) => {
+                const isHeader = (rowIndex === 0);
+                if (isHeader) {
+                    doc.setFont("NotoSansJP-Bold", "bold");
+                    doc.setTextColor(20, 20, 20);
+                } else {
+                    doc.setFont("NotoSansJP-Medium", "normal");
+                    doc.setTextColor(60, 60, 60);
+                }
+
+                row.forEach((cellText, colIndex) => {
+                    const xPos = leftMargin + (colIndex * colWidth);
+                    const cleanCell = cellText.trim().replace(/\*\*(.*?)\*\*/g, '$1');
+                    const wrappedCell = doc.splitTextToSize(cleanCell, colWidth - 3);
+                    doc.text(wrappedCell, xPos, currentY, { align: 'left' });
+                });
+
+                currentY += (isHeader ? 6 : 5.2);
+            });
+            currentY += 3;
+        };
+
+        for (let i = 0; i < rawLines.length; i++) {
+            const line = rawLines[i];
             const trimmed = line.trim();
-            if (!trimmed) {
-                currentY += 4; // 空行
-                return;
+
+            if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+                const cells = trimmed.substring(1, trimmed.length - 1).split('|');
+                tableRows.push(cells);
+                inTable = true;
+                continue;
+            } else if (inTable) {
+                renderTable(tableRows);
+                tableRows = [];
+                inTable = false;
             }
+
+            if (!trimmed) {
+                currentY += 3;
+                continue;
+            }
+
             let drawText = trimmed;
-            let fontSize = 11;
+            let fontSize = 10;
+            let fontName = "NotoSansJP-Medium";
+            let fontStyle = "normal";
 
             if (trimmed.startsWith('#')) {
                 const match = trimmed.match(/^(#{1,6})\s+(.*)$/);
                 if (match) {
+                    const level = match[1].length;
                     drawText = match[2];
-                    fontSize = match[1].length === 1 ? 14 : 12;
+                    fontName = "NotoSansJP-Bold";
+                    fontStyle = "bold";
+                    if (level === 1) fontSize = 13.5;
+                    else if (level === 2) fontSize = 12;
+                    else fontSize = 10.5;
+                }
+            } else if (/^[-*]\s*\[([ xX])\]\s+(.*)$/.test(trimmed)) {
+                const match = trimmed.match(/^[-*]\s*\[([ xX])\]\s+(.*)$/);
+                const isChecked = match[1].toLowerCase() === 'x';
+                drawText = (isChecked ? '☑ ' : '☐ ') + match[2];
+                if (isChecked) {
+                    fontName = "NotoSansJP-Light";
+                    fontStyle = "light";
                 }
             } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                 drawText = '• ' + trimmed.substring(2).trim();
             }
+
             drawText = drawText.replace(/\*\*(.*?)\*\*/g, '$1');
 
+            doc.setFont(fontName, fontStyle);
             doc.setFontSize(fontSize);
-            
-            // 長い文章が折り返せるように幅を制限しつつ左揃えで出力
+
             const wrappedLines = doc.splitTextToSize(drawText, maxLineWidth);
+            const currentSpacing = (fontSize > 11) ? 6 : defaultLineSpacing;
+
             wrappedLines.forEach(wLine => {
                 doc.text(wLine, leftMargin, currentY, { align: 'left' });
-                currentY += lineSpacing;
+                currentY += currentSpacing;
             });
-        });
+        }
+
+        if (inTable) {
+            renderTable(tableRows);
+        }
     }
 
     const coverPdfBytes = doc.output('arraybuffer');
 
     // --- ステップ 2: pdf-lib を使ってPDFを組み立てる ---
-    try {
-        const mergedPdf = await PDFDocument.create();
+    const mergedPdf = await PDFDocument.create();
+    const coverPdfDoc = await PDFDocument.load(coverPdfBytes);
+    const [coverPage] = await mergedPdf.copyPages(coverPdfDoc, [0]);
+
+    let mainPages = [];
+    let originalPageCount = 0;
+
+    if (pdfFileInput.files.length > 0) {
+        const file = pdfFileInput.files[0];
+        const arrayBuffer = await file.arrayBuffer();
+        const sourcePdfDoc = await PDFDocument.load(arrayBuffer);
+        originalPageCount = sourcePdfDoc.getPageCount();
         
-        const coverPdfDoc = await PDFDocument.load(coverPdfBytes);
-        const [coverPage] = await mergedPdf.copyPages(coverPdfDoc, [0]);
-
-        let mainPages = [];
-        let originalPageCount = 0;
-
-        if (pdfFileInput.files.length > 0) {
-            const file = pdfFileInput.files[0];
-            const arrayBuffer = await file.arrayBuffer();
-            const sourcePdfDoc = await PDFDocument.load(arrayBuffer);
-            originalPageCount = sourcePdfDoc.getPageCount();
-            
-            let indices = Array.from({ length: originalPageCount }, (_, i) => i);
-            if (orderMode === 'reverse') {
-                indices = indices.reverse();
-            }
-
-            mainPages = await mergedPdf.copyPages(sourcePdfDoc, indices);
-        }
-
-        const coverPageCount = 1;
-        const contentTotal = originalPageCount + coverPageCount;
-        let blankPagesCount = 0;
-        
-        if (orderMode === 'reverse' && originalPageCount > 0) {
-            const remainder = contentTotal % 4;
-            blankPagesCount = (4 - remainder) % 4;
-        }
-
-        const a4Width = 595.28;
-        const a4Height = 841.89;
-
+        let indices = Array.from({ length: originalPageCount }, (_, i) => i);
         if (orderMode === 'reverse') {
-            for (let i = 0; i < blankPagesCount; i++) {
-                mergedPdf.addPage([a4Width, a4Height]);
-            }
-            for (const page of mainPages) {
-                mergedPdf.addPage(page);
-            }
-            mergedPdf.addPage(coverPage);
-        } else {
-            mergedPdf.addPage(coverPage);
-            for (const page of mainPages) {
-                mergedPdf.addPage(page);
-            }
+            indices = indices.reverse();
         }
+        mainPages = await mergedPdf.copyPages(sourcePdfDoc, indices);
+    }
 
-        // --- ステップ 3: ダウンロード ---
+    const coverPageCount = 1;
+    const contentTotal = originalPageCount + coverPageCount;
+    let blankPagesCount = 0;
+    
+    if (orderMode === 'reverse' && originalPageCount > 0) {
+        const remainder = contentTotal % 4;
+        blankPagesCount = (4 - remainder) % 4;
+    }
+
+    const a4Width = 595.28;
+    const a4Height = 841.89;
+
+    if (orderMode === 'reverse') {
+        for (let i = 0; i < blankPagesCount; i++) {
+            mergedPdf.addPage([a4Width, a4Height]);
+        }
+        for (const page of mainPages) {
+            mergedPdf.addPage(page);
+        }
+        mergedPdf.addPage(coverPage);
+    } else {
+        mergedPdf.addPage(coverPage);
+        for (const page of mainPages) {
+            mergedPdf.addPage(page);
+        }
+    }
+
+    return { mergedPdf, originalPageCount, blankPagesCount };
+}
+
+// プレビューボタンのイベント
+document.getElementById('previewBtn').addEventListener('click', async () => {
+    try {
+        const { mergedPdf } = await buildProcessedPdf();
+        const pdfBytes = await mergedPdf.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+    } catch (error) {
+        console.error(error);
+        alert("⚠️ プレビューの生成中にエラーが発生しました。");
+    }
+});
+
+// ダウンロードボタンのイベント
+document.getElementById('generateBtn').addEventListener('click', async () => {
+    try {
+        const title = document.getElementById('titleInput').value.trim() || '無題';
+        const orderMode = document.querySelector('input[name="orderMode"]:checked').value;
+        const pdfFileInput = document.getElementById('pdfFileInput');
+
+        const { mergedPdf, originalPageCount, blankPagesCount } = await buildProcessedPdf();
         const mergedPdfBytes = await mergedPdf.save();
+        
         const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -178,14 +281,13 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         link.click();
 
         const totalPages = mergedPdf.getPageCount();
-        if (orderMode === 'reverse' && originalPageCount > 0) {
+        if (orderMode === 'reverse' && pdfFileInput.files.length > 0) {
             alert(`✅ 処理完了（逆順・4の倍数調整）\n(空白: ${blankPagesCount}P + 本文: ${originalPageCount}P + 表紙: 1P = 計 ${totalPages}P)`);
         } else {
-            alert(`✅ 処理完了（そのまま）\n(表紙: 1P + 本文: ${originalPageCount}P = 計 ${totalPages}P)`);
+            alert(`✅ 処理完了\n(計 ${totalPages}P)`);
         }
-
     } catch (error) {
         console.error(error);
-        alert("⚠️ PDFの処理中にエラーが発生しました。コンソールを確認してください。");
+        alert("⚠️ PDFの処理中にエラーが発生しました。");
     }
 });

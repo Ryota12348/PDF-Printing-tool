@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF表紙作成・印刷用調整ツール</title>
     <link rel="stylesheet" href="style.css">
-    <!-- jsPDF (表紙のテキスト描画用) -->
+    <!-- jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- pdf-lib (既存PDFの読み込み・結合・反転用) -->
+    <!-- pdf-lib -->
     <script src="https://unpkg.com/pdf-lib@1.4.0/dist/pdf-lib.min.js"></script>
 </head>
 <body>
@@ -59,7 +59,10 @@
         <!-- ③ 完成！ -->
         <section class="section-box complete-box">
             <h2>③ 完成！</h2>
-            <button id="generateBtn">ダウンロード</button>
+            <div class="button-group">
+                <button id="previewBtn" class="btn-secondary">プレビュー</button>
+                <button id="generateBtn" class="btn-primary">ダウンロード</button>
+            </div>
         </section>
     </div>
 
