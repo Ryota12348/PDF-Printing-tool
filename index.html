@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF表紙作成・印刷用調整ツール</title>
     <link rel="stylesheet" href="style.css">
-    <!-- jsPDF -->
+    <!-- jsPDF (表紙のテキスト描画用) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- pdf-lib -->
+    <!-- pdf-lib (既存PDFの読み込み・結合・反転用) -->
     <script src="https://unpkg.com/pdf-lib@1.4.0/dist/pdf-lib.min.js"></script>
 </head>
 <body>
@@ -33,7 +33,22 @@
 
             <div class="form-group">
                 <label for="memoInput">(任意) メモの記入 (Markdownも可)</label>
-                <textarea id="memoInput" rows="5" placeholder="# 概要&#10;- 参加者：山田、鈴木&#10;- 目的：進捗確認"></textarea>
+                <textarea id="memoInput" rows="5" placeholder="# 概要&#10;- 参加者：山田、鈴木&#10;- [x] 完了したタスク&#10;| 項目 | 内容 |&#10;|---|---|&#10;| A | B |"></textarea>
+            </div>
+
+            <!-- 追加: QRコードのアップロード -->
+            <div class="form-group">
+                <label>QRコード挿入 (左下・任意)</label>
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label for="qr1Input" style="font-weight: normal; font-size: 0.8rem;">QRコード1</label>
+                        <input type="file" id="qr1Input" accept="image/*">
+                    </div>
+                    <div style="flex: 1;">
+                        <label for="qr2Input" style="font-weight: normal; font-size: 0.8rem;">QRコード2</label>
+                        <input type="file" id="qr2Input" accept="image/*">
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -51,7 +66,7 @@
                 <label>順番</label>
                 <div class="radio-options">
                     <label><input type="radio" name="orderMode" value="normal" checked> そのまま (横書き用)</label>
-                    <label><input type="radio" name="orderMode" value="reverse"> 逆にする (縦書き用)</label>
+                    <label><input type="radio" name="orderMode" value="reverse"> 逆にする (国語用)</label>
                 </div>
             </div>
         </section>
@@ -59,10 +74,7 @@
         <!-- ③ 完成！ -->
         <section class="section-box complete-box">
             <h2>③ 完成！</h2>
-            <div class="button-group">
-                <button id="previewBtn" class="btn-secondary">プレビュー</button>
-                <button id="generateBtn" class="btn-primary">ダウンロード</button>
-            </div>
+            <button id="generateBtn">ダウンロード</button>
         </section>
     </div>
 
